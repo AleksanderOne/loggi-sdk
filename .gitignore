@@ -1,8 +1,8 @@
 # Dependencies
 node_modules/
 
-# Build output
-dist/
+# Build output - NIE ignoruj! Potrzebne dla instalacji z GitHub
+# dist/
 
 # IDE
 .idea/
