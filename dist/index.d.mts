@@ -413,11 +413,6 @@ declare function captureFetch(): void;
 declare function restoreFetch(): void;
 
 /**
- * Rejestruje handlery dla nieobsłużonych błędów i odrzuconych Promise'ów
- */
-declare function captureUnhandled(): void;
-
-/**
  * Rekurencyjnie sanityzuje obiekt, ukrywając wrażliwe dane
  */
 declare function sanitize(data: Record<string, unknown> | undefined, sensitiveKeys: string[]): Record<string, unknown> | undefined;
@@ -426,4 +421,4 @@ declare function sanitize(data: Record<string, unknown> | undefined, sensitiveKe
  */
 declare function sanitizeMessage(message: string): string;
 
-export { type AHACategories, type CLACategories, type CategoryLogger, type CategorySchema, type DynamicLogger, type FACategories, type LogCategory, type LogEntry, type LogLevel, type LogSchema, type Loggi, type LoggiConfig, log as _internalLog, captureConsole, captureFetch, captureUnhandled, createLogger, createLoggerSync, createLoggi, createLoggiSync, fetchSchema, flush, getConfig, initLoggi, initTransport, isLoggiInitialized, isTransportOffline, logger, rawConsole, resetOfflineMode, restoreConsole, restoreFetch, sanitize, sanitizeMessage };
+export { type AHACategories, type CLACategories, type CategoryLogger, type CategorySchema, type DynamicLogger, type FACategories, type LogCategory, type LogEntry, type LogLevel, type LogSchema, type Loggi, type LoggiConfig, log as _internalLog, captureConsole, captureFetch, createLogger, createLoggerSync, createLoggi, createLoggiSync, fetchSchema, flush, getConfig, initLoggi, initTransport, isLoggiInitialized, isTransportOffline, logger, rawConsole, resetOfflineMode, restoreConsole, restoreFetch, sanitize, sanitizeMessage };

@@ -37,7 +37,9 @@ export type {
 // Integracje (do manualnego użycia)
 export { captureConsole, restoreConsole, rawConsole } from './integrations/console';
 export { captureFetch, restoreFetch } from './integrations/fetch';
-export { captureUnhandled } from './integrations/unhandled';
+// UWAGA: captureUnhandled NIE jest eksportowane z głównego entrypointa
+// ponieważ używa process.on który nie działa w Edge Runtime.
+// Jeśli potrzebujesz, użyj: import { captureUnhandled } from 'loggi-sdk/node';
 
 // Next.js helpers (bez middleware - to wymaga import z 'loggi-sdk/next')
 export { runWithRequestId, getRequestId } from './next/request-context';

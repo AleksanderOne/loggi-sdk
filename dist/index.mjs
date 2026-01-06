@@ -771,6 +771,10 @@ var init_fetch = __esm({
 });
 
 // src/integrations/unhandled.ts
+var unhandled_exports = {};
+__export(unhandled_exports, {
+  captureUnhandled: () => captureUnhandled
+});
 function captureUnhandled() {
   if (isRegistered) return;
   if (typeof process === "undefined" || typeof process.on !== "function") return;
@@ -856,7 +860,10 @@ function initLoggi(config) {
     captureFetch();
   }
   if (globalConfig.captureUnhandled) {
-    captureUnhandled();
+    Promise.resolve().then(() => (init_unhandled(), unhandled_exports)).then(({ captureUnhandled: captureUnhandled2 }) => {
+      captureUnhandled2();
+    }).catch(() => {
+    });
   }
   isInitialized = true;
   if (offlineMode) {
@@ -888,7 +895,6 @@ var init_config = __esm({
     init_types();
     init_console();
     init_fetch();
-    init_unhandled();
     globalConfig = null;
     isInitialized = false;
   }
@@ -1245,14 +1251,12 @@ function createLoggiSync(projectCategories = []) {
 // src/index.ts
 init_console();
 init_fetch();
-init_unhandled();
 init_request_context();
 init_sanitize();
 export {
   log as _internalLog,
   captureConsole,
   captureFetch,
-  captureUnhandled,
   createLogger,
   createLoggerSync,
   createLoggi,

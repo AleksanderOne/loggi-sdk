@@ -8,7 +8,7 @@ import {
 } from './types';
 import { captureConsole } from './integrations/console';
 import { captureFetch } from './integrations/fetch';
-import { captureUnhandled } from './integrations/unhandled';
+// UWAGA: captureUnhandled importowane dynamicznie - używa process.on który nie działa w Edge Runtime
 
 /**
  * Globalna konfiguracja SDK
@@ -117,7 +117,12 @@ export function initLoggi(config?: LoggiConfig): void {
         captureFetch();
     }
     if (globalConfig.captureUnhandled) {
-        captureUnhandled();
+        // Dynamic import - captureUnhandled używa process.on który nie działa w Edge Runtime
+        import('./integrations/unhandled').then(({ captureUnhandled }) => {
+            captureUnhandled();
+        }).catch(() => {
+            // Edge Runtime - ignoruj błąd
+        });
     }
 
     isInitialized = true;

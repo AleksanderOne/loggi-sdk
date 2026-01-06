@@ -394,16 +394,6 @@ var init_fetch = __esm({
   }
 });
 
-// src/integrations/unhandled.ts
-var init_unhandled = __esm({
-  "src/integrations/unhandled.ts"() {
-    "use strict";
-    init_config();
-    init_logger();
-    init_request_context();
-  }
-});
-
 // src/config.ts
 function getConfig() {
   if (!globalConfig) {
@@ -421,7 +411,6 @@ var init_config = __esm({
     init_types();
     init_console();
     init_fetch();
-    init_unhandled();
     globalConfig = null;
     isInitialized = false;
   }
