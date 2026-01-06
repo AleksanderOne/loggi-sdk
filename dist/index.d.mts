@@ -265,6 +265,10 @@ declare function isTransportOffline(): boolean;
  * Resetuj tryb offline (np. po ponownym połączeniu)
  */
 declare function resetOfflineMode(): void;
+/**
+ * Inicjalizuj transport - wywołaj po initLoggi()
+ */
+declare function initTransport(): Promise<void>;
 
 /**
  * LOGGI - Unified Logging API
@@ -422,4 +426,4 @@ declare function sanitize(data: Record<string, unknown> | undefined, sensitiveKe
  */
 declare function sanitizeMessage(message: string): string;
 
-export { type AHACategories, type CLACategories, type CategoryLogger, type CategorySchema, type DynamicLogger, type FACategories, type LogCategory, type LogEntry, type LogLevel, type LogSchema, type Loggi, type LoggiConfig, log as _internalLog, captureConsole, captureFetch, captureUnhandled, createLogger, createLoggerSync, createLoggi, createLoggiSync, fetchSchema, flush, getConfig, initLoggi, isLoggiInitialized, isTransportOffline, logger, rawConsole, resetOfflineMode, restoreConsole, restoreFetch, sanitize, sanitizeMessage };
+export { type AHACategories, type CLACategories, type CategoryLogger, type CategorySchema, type DynamicLogger, type FACategories, type LogCategory, type LogEntry, type LogLevel, type LogSchema, type Loggi, type LoggiConfig, log as _internalLog, captureConsole, captureFetch, captureUnhandled, createLogger, createLoggerSync, createLoggi, createLoggiSync, fetchSchema, flush, getConfig, initLoggi, initTransport, isLoggiInitialized, isTransportOffline, logger, rawConsole, resetOfflineMode, restoreConsole, restoreFetch, sanitize, sanitizeMessage };

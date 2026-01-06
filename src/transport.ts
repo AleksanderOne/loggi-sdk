@@ -32,6 +32,34 @@ let consecutiveFailures = 0;
 const MAX_FAILURES_BEFORE_OFFLINE = 3;
 
 /**
+ * Konfiguracja retry na starcie
+ */
+const STARTUP_RETRY_CONFIG = {
+    maxRetries: 10,           // Max prób
+    retryIntervalMs: 60000,   // Interwał między próbami (1 minuta)
+};
+
+/**
+ * Czy trwa retry na starcie
+ */
+let isRetrying = false;
+
+/**
+ * Licznik prób retry na starcie
+ */
+let startupRetryCount = 0;
+
+/**
+ * Timer do retry
+ */
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Czy połączenie zostało nawiązane (przynajmniej raz)
+ */
+let connectionEstablished = false;
+
+/**
  * Dodaj log do kolejki
  */
 export function enqueue(entry: LogEntry): void {
@@ -49,6 +77,12 @@ export function enqueue(entry: LogEntry): void {
     }
 
     queue.push(entry);
+
+    // Nie flush gdy trwa retry - logi będą wysłane po nawiązaniu połączenia
+    if (isRetrying) {
+        return;
+    }
+
     scheduleFlush();
 }
 
@@ -163,6 +197,127 @@ export function isTransportOffline(): boolean {
 export function resetOfflineMode(): void {
     isOffline = false;
     consecutiveFailures = 0;
+    connectionEstablished = false;
+    startupRetryCount = 0;
+    isRetrying = false;
+    if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+    }
+}
+
+/**
+ * Sprawdź dostępność serwera loggi-app
+ */
+async function checkServerAvailability(): Promise<boolean> {
+    if (!isLoggiInitialized()) return false;
+
+    const config = getConfig();
+    if (config.offlineMode) return false;
+
+    try {
+        const healthEndpoint = config.endpoint + '/api/health';
+        const response = await fetch(healthEndpoint, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000), // 5s timeout
+        });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Uruchom retry loop - próbuje połączyć się z serwerem co minutę, max 10 razy
+ */
+async function startRetryLoop(): Promise<void> {
+    if (isRetrying || connectionEstablished || isShuttingDown) return;
+    if (!isLoggiInitialized()) return;
+
+    const config = getConfig();
+    if (config.offlineMode) return;
+
+    isRetrying = true;
+    startupRetryCount = 0;
+
+    const attemptConnection = async () => {
+        if (isShuttingDown || connectionEstablished) {
+            isRetrying = false;
+            return;
+        }
+
+        startupRetryCount++;
+
+        if (config.debug) {
+            console.log(`[LOGGI] Próba połączenia z serwerem logów (${startupRetryCount}/${STARTUP_RETRY_CONFIG.maxRetries})...`);
+        }
+
+        const available = await checkServerAvailability();
+
+        if (available) {
+            connectionEstablished = true;
+            isRetrying = false;
+            isOffline = false;
+            consecutiveFailures = 0;
+
+            if (config.debug) {
+                console.log('[LOGGI] ✅ Połączono z serwerem logów');
+            }
+
+            // Wyślij zaległe logi
+            if (queue.length > 0) {
+                scheduleFlush();
+            }
+            return;
+        }
+
+        if (startupRetryCount >= STARTUP_RETRY_CONFIG.maxRetries) {
+            // Wyczerpano próby - przejdź w tryb offline na stałe
+            isRetrying = false;
+            isOffline = true;
+            queue = []; // Wyczyść kolejkę
+
+            console.warn(
+                `[LOGGI] ❌ Nie udało się połączyć z serwerem logów po ${STARTUP_RETRY_CONFIG.maxRetries} próbach. ` +
+                `Przechodzę w tryb offline (tylko konsola).`
+            );
+            return;
+        }
+
+        // Zaplanuj następną próbę
+        if (config.debug) {
+            console.log(`[LOGGI] Serwer niedostępny. Następna próba za ${STARTUP_RETRY_CONFIG.retryIntervalMs / 1000}s...`);
+        }
+
+        retryTimer = setTimeout(attemptConnection, STARTUP_RETRY_CONFIG.retryIntervalMs);
+    };
+
+    // Pierwsza próba natychmiast
+    await attemptConnection();
+}
+
+/**
+ * Inicjalizuj transport - wywołaj po initLoggi()
+ */
+export async function initTransport(): Promise<void> {
+    if (!isLoggiInitialized()) return;
+
+    const config = getConfig();
+    if (config.offlineMode) return;
+
+    // Sprawdź czy serwer jest dostępny
+    const available = await checkServerAvailability();
+
+    if (available) {
+        connectionEstablished = true;
+        if (config.debug) {
+            console.log('[LOGGI] ✅ Serwer logów dostępny');
+        }
+    } else {
+        // Serwer niedostępny - uruchom retry loop w tle
+        console.warn('[LOGGI] ⚠️ Serwer logów niedostępny. Uruchamiam retry w tle...');
+        startRetryLoop();
+    }
 }
 
 /**
@@ -178,14 +333,19 @@ async function gracefulShutdown(signal: string): Promise<void> {
         console.log(`[LOGGI] Received ${signal}, flushing remaining logs...`);
     }
 
-    // Wyczyść timer
+    // Wyczyść timery
     if (flushTimer) {
         clearTimeout(flushTimer);
         flushTimer = null;
     }
+    if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+    }
+    isRetrying = false;
 
-    // Wyślij wszystko co zostało (jeśli nie jesteśmy offline)
-    if (!config.offlineMode && !isOffline && queue.length > 0) {
+    // Wyślij wszystko co zostało (jeśli nie jesteśmy offline i mamy połączenie)
+    if (!config.offlineMode && !isOffline && connectionEstablished && queue.length > 0) {
         await flush();
     }
 

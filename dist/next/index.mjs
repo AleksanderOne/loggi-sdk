@@ -1,6 +1,10 @@
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+
 // src/next/request-context.ts
 import { AsyncLocalStorage } from "async_hooks";
-var storage = new AsyncLocalStorage();
 function generateRequestId(prefix = "req") {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).substring(2, 10);
@@ -12,29 +16,33 @@ function getRequestId() {
 function runWithRequestId(requestId, fn) {
   return storage.run({ requestId, startTime: Date.now() }, fn);
 }
-
-// src/next/middleware.ts
-import { NextResponse } from "next/server";
+var storage;
+var init_request_context = __esm({
+  "src/next/request-context.ts"() {
+    "use strict";
+    storage = new AsyncLocalStorage();
+  }
+});
 
 // src/types.ts
-var LEVEL_PRIORITY = {
-  dev: 0,
-  // Najniższy - tylko development, z dodatkowym kontekstem
-  log: 1,
-  // Standardowe logowanie (dawny debug)
-  info: 2,
-  warn: 3,
-  error: 4,
-  fatal: 5
-};
+var LEVEL_PRIORITY;
+var init_types = __esm({
+  "src/types.ts"() {
+    "use strict";
+    LEVEL_PRIORITY = {
+      dev: 0,
+      // Najniższy - tylko development, z dodatkowym kontekstem
+      log: 1,
+      // Standardowe logowanie (dawny debug)
+      info: 2,
+      warn: 3,
+      error: 4,
+      fatal: 5
+    };
+  }
+});
 
 // src/transport.ts
-var queue = [];
-var flushTimer = null;
-var isShuttingDown = false;
-var isOffline = false;
-var consecutiveFailures = 0;
-var MAX_FAILURES_BEFORE_OFFLINE = 3;
 function enqueue(entry) {
   if (isShuttingDown) return;
   if (!isLoggiInitialized()) {
@@ -45,6 +53,9 @@ function enqueue(entry) {
     return;
   }
   queue.push(entry);
+  if (isRetrying) {
+    return;
+  }
   scheduleFlush();
 }
 function scheduleFlush() {
@@ -123,18 +134,39 @@ async function gracefulShutdown(signal) {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
-  if (!config.offlineMode && !isOffline && queue.length > 0) {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  isRetrying = false;
+  if (!config.offlineMode && !isOffline && connectionEstablished && queue.length > 0) {
     await flush();
   }
   if (config.debug) {
     console.log("[LOGGI] Shutdown complete");
   }
 }
-if (typeof process !== "undefined") {
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  process.on("beforeExit", () => gracefulShutdown("beforeExit"));
-}
+var queue, flushTimer, isShuttingDown, isOffline, consecutiveFailures, MAX_FAILURES_BEFORE_OFFLINE, isRetrying, retryTimer, connectionEstablished;
+var init_transport = __esm({
+  "src/transport.ts"() {
+    "use strict";
+    init_config();
+    queue = [];
+    flushTimer = null;
+    isShuttingDown = false;
+    isOffline = false;
+    consecutiveFailures = 0;
+    MAX_FAILURES_BEFORE_OFFLINE = 3;
+    isRetrying = false;
+    retryTimer = null;
+    connectionEstablished = false;
+    if (typeof process !== "undefined") {
+      process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+      process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+      process.on("beforeExit", () => gracefulShutdown("beforeExit"));
+    }
+  }
+});
 
 // src/utils/sanitize.ts
 function sanitize(data, sensitiveKeys) {
@@ -172,54 +204,19 @@ function sanitizeMessage(message) {
   );
   return sanitized;
 }
+var init_sanitize = __esm({
+  "src/utils/sanitize.ts"() {
+    "use strict";
+  }
+});
 
 // src/logger.ts
-var _originalConsoleLog = console.log.bind(console);
-var LEVEL_COLORS = {
-  dev: "\x1B[35m",
-  // magenta - wyraźny dla dev
-  log: "\x1B[90m",
-  // gray (dawny debug)
-  info: "\x1B[36m",
-  // cyan
-  warn: "\x1B[33m",
-  // yellow
-  error: "\x1B[31m",
-  // red
-  fatal: "\x1B[35m"
-  // magenta
-};
-var LEVEL_EMOJI = {
-  dev: "\u{1F6E0}\uFE0F",
-  log: "\u{1F50D}",
-  info: "\u{1F4CB}",
-  warn: "\u26A0\uFE0F",
-  error: "\u274C",
-  fatal: "\u{1F480}"
-};
-var CATEGORY_EMOJI = {
-  auth: "\u{1F510}",
-  api: "\u{1F4E1}",
-  security: "\u{1F6E1}\uFE0F",
-  db: "\u{1F4BE}",
-  middleware: "\u{1F504}",
-  console: "\u{1F4DD}",
-  fetch: "\u{1F310}",
-  error: "\u274C",
-  custom: "\u{1F4CB}",
-  flow: "\u{1F504}"
-};
-var RESET = "\x1B[0m";
-var BOLD = "\x1B[1m";
-var DIM = "\x1B[2m";
-var _debugDeprecationWarningShown = false;
 function warnDebugDeprecated() {
   if (!_debugDeprecationWarningShown) {
     console.warn("[LOGGI] \u26A0\uFE0F Metoda .debug() jest deprecated. U\u017Cyj .log() zamiast tego.");
     _debugDeprecationWarningShown = true;
   }
 }
-var _categoryMap = /* @__PURE__ */ new Map();
 function printToConsole(entry) {
   const levelColor = LEVEL_COLORS[entry.level];
   const levelEmoji = LEVEL_EMOJI[entry.level];
@@ -288,31 +285,109 @@ function createCategoryLogger(category) {
     }
   };
 }
-var logMethodCustom = (message, data) => log("log", "custom", message, data);
-var logger = {
-  // Podstawowe metody (używają kategorii 'custom')
-  dev: (message, data) => log("dev", "custom", message, data),
-  log: logMethodCustom,
-  info: (message, data) => log("info", "custom", message, data),
-  warn: (message, data) => log("warn", "custom", message, data),
-  error: (message, data) => log("error", "custom", message, data),
-  fatal: (message, data) => log("fatal", "custom", message, data),
-  /** @deprecated Użyj .log() */
-  debug: (message, data) => {
-    warnDebugDeprecated();
-    logMethodCustom(message, data);
-  },
-  // Loggery dla konkretnych kategorii
-  auth: createCategoryLogger("auth"),
-  api: createCategoryLogger("api"),
-  security: createCategoryLogger("security"),
-  db: createCategoryLogger("db"),
-  middleware: createCategoryLogger("middleware")
-};
+var _originalConsoleLog, LEVEL_COLORS, LEVEL_EMOJI, CATEGORY_EMOJI, RESET, BOLD, DIM, _debugDeprecationWarningShown, _categoryMap, logMethodCustom, logger;
+var init_logger = __esm({
+  "src/logger.ts"() {
+    "use strict";
+    init_types();
+    init_config();
+    init_transport();
+    init_sanitize();
+    init_request_context();
+    _originalConsoleLog = console.log.bind(console);
+    LEVEL_COLORS = {
+      dev: "\x1B[35m",
+      // magenta - wyraźny dla dev
+      log: "\x1B[90m",
+      // gray (dawny debug)
+      info: "\x1B[36m",
+      // cyan
+      warn: "\x1B[33m",
+      // yellow
+      error: "\x1B[31m",
+      // red
+      fatal: "\x1B[35m"
+      // magenta
+    };
+    LEVEL_EMOJI = {
+      dev: "\u{1F6E0}\uFE0F",
+      log: "\u{1F50D}",
+      info: "\u{1F4CB}",
+      warn: "\u26A0\uFE0F",
+      error: "\u274C",
+      fatal: "\u{1F480}"
+    };
+    CATEGORY_EMOJI = {
+      auth: "\u{1F510}",
+      api: "\u{1F4E1}",
+      security: "\u{1F6E1}\uFE0F",
+      db: "\u{1F4BE}",
+      middleware: "\u{1F504}",
+      console: "\u{1F4DD}",
+      fetch: "\u{1F310}",
+      error: "\u274C",
+      custom: "\u{1F4CB}",
+      flow: "\u{1F504}"
+    };
+    RESET = "\x1B[0m";
+    BOLD = "\x1B[1m";
+    DIM = "\x1B[2m";
+    _debugDeprecationWarningShown = false;
+    _categoryMap = /* @__PURE__ */ new Map();
+    logMethodCustom = (message, data) => log("log", "custom", message, data);
+    logger = {
+      // Podstawowe metody (używają kategorii 'custom')
+      dev: (message, data) => log("dev", "custom", message, data),
+      log: logMethodCustom,
+      info: (message, data) => log("info", "custom", message, data),
+      warn: (message, data) => log("warn", "custom", message, data),
+      error: (message, data) => log("error", "custom", message, data),
+      fatal: (message, data) => log("fatal", "custom", message, data),
+      /** @deprecated Użyj .log() */
+      debug: (message, data) => {
+        warnDebugDeprecated();
+        logMethodCustom(message, data);
+      },
+      // Loggery dla konkretnych kategorii
+      auth: createCategoryLogger("auth"),
+      api: createCategoryLogger("api"),
+      security: createCategoryLogger("security"),
+      db: createCategoryLogger("db"),
+      middleware: createCategoryLogger("middleware")
+    };
+  }
+});
+
+// src/integrations/console.ts
+var init_console = __esm({
+  "src/integrations/console.ts"() {
+    "use strict";
+    init_config();
+    init_logger();
+  }
+});
+
+// src/integrations/fetch.ts
+var init_fetch = __esm({
+  "src/integrations/fetch.ts"() {
+    "use strict";
+    init_config();
+    init_logger();
+    init_request_context();
+  }
+});
+
+// src/integrations/unhandled.ts
+var init_unhandled = __esm({
+  "src/integrations/unhandled.ts"() {
+    "use strict";
+    init_config();
+    init_logger();
+    init_request_context();
+  }
+});
 
 // src/config.ts
-var globalConfig = null;
-var isInitialized = false;
 function getConfig() {
   if (!globalConfig) {
     throw new Error("[LOGGI] SDK not initialized. Call initLoggi() first.");
@@ -322,8 +397,27 @@ function getConfig() {
 function isLoggiInitialized() {
   return isInitialized;
 }
+var globalConfig, isInitialized;
+var init_config = __esm({
+  "src/config.ts"() {
+    "use strict";
+    init_types();
+    init_console();
+    init_fetch();
+    init_unhandled();
+    globalConfig = null;
+    isInitialized = false;
+  }
+});
+
+// src/next/index.ts
+init_request_context();
 
 // src/next/middleware.ts
+init_request_context();
+init_config();
+init_logger();
+import { NextResponse } from "next/server";
 function withLogging(handler) {
   return async (request, context) => {
     const start = Date.now();

@@ -18,7 +18,7 @@
 export { initLoggi, getConfig, isLoggiInitialized } from './config';
 export { logger, _internalLog, createLogger, createLoggerSync, fetchSchema } from './logger';
 export type { CategoryLogger, DynamicLogger } from './logger';
-export { flush, isTransportOffline, resetOfflineMode } from './transport';
+export { flush, isTransportOffline, resetOfflineMode, initTransport } from './transport';
 
 // Nowe API - loggi (zalecane)
 export { createLoggi, createLoggiSync } from './loggi';

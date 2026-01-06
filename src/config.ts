@@ -135,14 +135,24 @@ export function initLoggi(config?: LoggiConfig): void {
             projectSlug: globalConfig.projectSlug,
             environment: globalConfig.environment,
         });
-    } else if (globalConfig.debug) {
-        console.log('[LOGGI] SDK initialized', {
-            projectSlug: globalConfig.projectSlug,
-            environment: globalConfig.environment,
-            endpoint: globalConfig.endpoint,
-            captureConsole: globalConfig.captureConsole,
-            captureFetch: globalConfig.captureFetch,
-            captureUnhandled: globalConfig.captureUnhandled,
+    } else {
+        if (globalConfig.debug) {
+            console.log('[LOGGI] SDK initialized', {
+                projectSlug: globalConfig.projectSlug,
+                environment: globalConfig.environment,
+                endpoint: globalConfig.endpoint,
+                captureConsole: globalConfig.captureConsole,
+                captureFetch: globalConfig.captureFetch,
+                captureUnhandled: globalConfig.captureUnhandled,
+            });
+        }
+
+        // Inicjalizuj transport z retry logic (w tle, nie blokuje)
+        // Używamy dynamic import aby uniknąć cyklicznej zależności
+        import('./transport').then(({ initTransport }) => {
+            initTransport().catch(() => {
+                // Błędy obsługiwane wewnętrznie przez initTransport
+            });
         });
     }
 }

@@ -3,6 +3,9 @@ var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -17,83 +20,62 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/index.ts
-var src_exports = {};
-__export(src_exports, {
-  _internalLog: () => log,
-  captureConsole: () => captureConsole,
-  captureFetch: () => captureFetch,
-  captureUnhandled: () => captureUnhandled,
-  createLogger: () => createLogger,
-  createLoggerSync: () => createLoggerSync,
-  createLoggi: () => createLoggi,
-  createLoggiSync: () => createLoggiSync,
-  fetchSchema: () => fetchSchema,
-  flush: () => flush,
-  getConfig: () => getConfig,
-  getRequestId: () => getRequestId,
-  initLoggi: () => initLoggi,
-  isLoggiInitialized: () => isLoggiInitialized,
-  isTransportOffline: () => isTransportOffline,
-  logger: () => logger,
-  rawConsole: () => rawConsole,
-  resetOfflineMode: () => resetOfflineMode,
-  restoreConsole: () => restoreConsole,
-  restoreFetch: () => restoreFetch,
-  runWithRequestId: () => runWithRequestId,
-  sanitize: () => sanitize,
-  sanitizeMessage: () => sanitizeMessage
-});
-module.exports = __toCommonJS(src_exports);
-
 // src/types.ts
-var LEVEL_PRIORITY = {
-  dev: 0,
-  // Najniższy - tylko development, z dodatkowym kontekstem
-  log: 1,
-  // Standardowe logowanie (dawny debug)
-  info: 2,
-  warn: 3,
-  error: 4,
-  fatal: 5
-};
-var DEFAULT_PREFIX_MAP = {
-  "[CLA AUTH]": "auth",
-  "[CLA AUTHORIZE]": "auth",
-  "[CLA TOKEN]": "auth",
-  "[CLA SECURITY]": "security",
-  "[CLA API]": "api",
-  "[CLA DB]": "db",
-  "[AHA MIDDLEWARE]": "middleware",
-  "[AHA AUTH]": "auth",
-  "[AHA PROJECT]": "api",
-  "[AHA POLICY]": "security",
-  "[AHA MEMBER]": "api",
-  "[AHA SESSION]": "auth",
-  "[FA AUTH]": "auth",
-  "[FA API]": "api"
-};
-var DEFAULT_SENSITIVE_KEYS = [
-  "password",
-  "token",
-  "secret",
-  "apiKey",
-  "api_key",
-  "authorization",
-  "cookie",
-  "session",
-  "credit_card",
-  "cvv",
-  "ssn"
-];
+var LEVEL_PRIORITY, DEFAULT_PREFIX_MAP, DEFAULT_SENSITIVE_KEYS;
+var init_types = __esm({
+  "src/types.ts"() {
+    "use strict";
+    LEVEL_PRIORITY = {
+      dev: 0,
+      // Najniższy - tylko development, z dodatkowym kontekstem
+      log: 1,
+      // Standardowe logowanie (dawny debug)
+      info: 2,
+      warn: 3,
+      error: 4,
+      fatal: 5
+    };
+    DEFAULT_PREFIX_MAP = {
+      "[CLA AUTH]": "auth",
+      "[CLA AUTHORIZE]": "auth",
+      "[CLA TOKEN]": "auth",
+      "[CLA SECURITY]": "security",
+      "[CLA API]": "api",
+      "[CLA DB]": "db",
+      "[AHA MIDDLEWARE]": "middleware",
+      "[AHA AUTH]": "auth",
+      "[AHA PROJECT]": "api",
+      "[AHA POLICY]": "security",
+      "[AHA MEMBER]": "api",
+      "[AHA SESSION]": "auth",
+      "[FA AUTH]": "auth",
+      "[FA API]": "api"
+    };
+    DEFAULT_SENSITIVE_KEYS = [
+      "password",
+      "token",
+      "secret",
+      "apiKey",
+      "api_key",
+      "authorization",
+      "cookie",
+      "session",
+      "credit_card",
+      "cvv",
+      "ssn"
+    ];
+  }
+});
 
 // src/transport.ts
-var queue = [];
-var flushTimer = null;
-var isShuttingDown = false;
-var isOffline = false;
-var consecutiveFailures = 0;
-var MAX_FAILURES_BEFORE_OFFLINE = 3;
+var transport_exports = {};
+__export(transport_exports, {
+  enqueue: () => enqueue,
+  flush: () => flush,
+  initTransport: () => initTransport,
+  isTransportOffline: () => isTransportOffline,
+  resetOfflineMode: () => resetOfflineMode
+});
 function enqueue(entry) {
   if (isShuttingDown) return;
   if (!isLoggiInitialized()) {
@@ -104,6 +86,9 @@ function enqueue(entry) {
     return;
   }
   queue.push(entry);
+  if (isRetrying) {
+    return;
+  }
   scheduleFlush();
 }
 function scheduleFlush() {
@@ -176,6 +161,90 @@ function isTransportOffline() {
 function resetOfflineMode() {
   isOffline = false;
   consecutiveFailures = 0;
+  connectionEstablished = false;
+  startupRetryCount = 0;
+  isRetrying = false;
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+}
+async function checkServerAvailability() {
+  if (!isLoggiInitialized()) return false;
+  const config = getConfig();
+  if (config.offlineMode) return false;
+  try {
+    const healthEndpoint = config.endpoint + "/api/health";
+    const response = await fetch(healthEndpoint, {
+      method: "GET",
+      signal: AbortSignal.timeout(5e3)
+      // 5s timeout
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+async function startRetryLoop() {
+  if (isRetrying || connectionEstablished || isShuttingDown) return;
+  if (!isLoggiInitialized()) return;
+  const config = getConfig();
+  if (config.offlineMode) return;
+  isRetrying = true;
+  startupRetryCount = 0;
+  const attemptConnection = async () => {
+    if (isShuttingDown || connectionEstablished) {
+      isRetrying = false;
+      return;
+    }
+    startupRetryCount++;
+    if (config.debug) {
+      console.log(`[LOGGI] Pr\xF3ba po\u0142\u0105czenia z serwerem log\xF3w (${startupRetryCount}/${STARTUP_RETRY_CONFIG.maxRetries})...`);
+    }
+    const available = await checkServerAvailability();
+    if (available) {
+      connectionEstablished = true;
+      isRetrying = false;
+      isOffline = false;
+      consecutiveFailures = 0;
+      if (config.debug) {
+        console.log("[LOGGI] \u2705 Po\u0142\u0105czono z serwerem log\xF3w");
+      }
+      if (queue.length > 0) {
+        scheduleFlush();
+      }
+      return;
+    }
+    if (startupRetryCount >= STARTUP_RETRY_CONFIG.maxRetries) {
+      isRetrying = false;
+      isOffline = true;
+      queue = [];
+      console.warn(
+        `[LOGGI] \u274C Nie uda\u0142o si\u0119 po\u0142\u0105czy\u0107 z serwerem log\xF3w po ${STARTUP_RETRY_CONFIG.maxRetries} pr\xF3bach. Przechodz\u0119 w tryb offline (tylko konsola).`
+      );
+      return;
+    }
+    if (config.debug) {
+      console.log(`[LOGGI] Serwer niedost\u0119pny. Nast\u0119pna pr\xF3ba za ${STARTUP_RETRY_CONFIG.retryIntervalMs / 1e3}s...`);
+    }
+    retryTimer = setTimeout(attemptConnection, STARTUP_RETRY_CONFIG.retryIntervalMs);
+  };
+  await attemptConnection();
+}
+async function initTransport() {
+  if (!isLoggiInitialized()) return;
+  const config = getConfig();
+  if (config.offlineMode) return;
+  const available = await checkServerAvailability();
+  if (available) {
+    connectionEstablished = true;
+    if (config.debug) {
+      console.log("[LOGGI] \u2705 Serwer log\xF3w dost\u0119pny");
+    }
+  } else {
+    console.warn("[LOGGI] \u26A0\uFE0F Serwer log\xF3w niedost\u0119pny. Uruchamiam retry w tle...");
+    startRetryLoop();
+  }
 }
 async function gracefulShutdown(signal) {
   if (isShuttingDown) return;
@@ -189,18 +258,46 @@ async function gracefulShutdown(signal) {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
-  if (!config.offlineMode && !isOffline && queue.length > 0) {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  isRetrying = false;
+  if (!config.offlineMode && !isOffline && connectionEstablished && queue.length > 0) {
     await flush();
   }
   if (config.debug) {
     console.log("[LOGGI] Shutdown complete");
   }
 }
-if (typeof process !== "undefined") {
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  process.on("beforeExit", () => gracefulShutdown("beforeExit"));
-}
+var queue, flushTimer, isShuttingDown, isOffline, consecutiveFailures, MAX_FAILURES_BEFORE_OFFLINE, STARTUP_RETRY_CONFIG, isRetrying, startupRetryCount, retryTimer, connectionEstablished;
+var init_transport = __esm({
+  "src/transport.ts"() {
+    "use strict";
+    init_config();
+    queue = [];
+    flushTimer = null;
+    isShuttingDown = false;
+    isOffline = false;
+    consecutiveFailures = 0;
+    MAX_FAILURES_BEFORE_OFFLINE = 3;
+    STARTUP_RETRY_CONFIG = {
+      maxRetries: 10,
+      // Max prób
+      retryIntervalMs: 6e4
+      // Interwał między próbami (1 minuta)
+    };
+    isRetrying = false;
+    startupRetryCount = 0;
+    retryTimer = null;
+    connectionEstablished = false;
+    if (typeof process !== "undefined") {
+      process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+      process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+      process.on("beforeExit", () => gracefulShutdown("beforeExit"));
+    }
+  }
+});
 
 // src/utils/sanitize.ts
 function sanitize(data, sensitiveKeys) {
@@ -238,65 +335,35 @@ function sanitizeMessage(message) {
   );
   return sanitized;
 }
+var init_sanitize = __esm({
+  "src/utils/sanitize.ts"() {
+    "use strict";
+  }
+});
 
 // src/next/request-context.ts
-var import_async_hooks = require("async_hooks");
-var storage = new import_async_hooks.AsyncLocalStorage();
 function getRequestId() {
   return storage.getStore()?.requestId;
 }
 function runWithRequestId(requestId, fn) {
   return storage.run({ requestId, startTime: Date.now() }, fn);
 }
+var import_async_hooks, storage;
+var init_request_context = __esm({
+  "src/next/request-context.ts"() {
+    "use strict";
+    import_async_hooks = require("async_hooks");
+    storage = new import_async_hooks.AsyncLocalStorage();
+  }
+});
 
 // src/logger.ts
-var _originalConsoleLog = console.log.bind(console);
-var LEVEL_COLORS = {
-  dev: "\x1B[35m",
-  // magenta - wyraźny dla dev
-  log: "\x1B[90m",
-  // gray (dawny debug)
-  info: "\x1B[36m",
-  // cyan
-  warn: "\x1B[33m",
-  // yellow
-  error: "\x1B[31m",
-  // red
-  fatal: "\x1B[35m"
-  // magenta
-};
-var LEVEL_EMOJI = {
-  dev: "\u{1F6E0}\uFE0F",
-  log: "\u{1F50D}",
-  info: "\u{1F4CB}",
-  warn: "\u26A0\uFE0F",
-  error: "\u274C",
-  fatal: "\u{1F480}"
-};
-var CATEGORY_EMOJI = {
-  auth: "\u{1F510}",
-  api: "\u{1F4E1}",
-  security: "\u{1F6E1}\uFE0F",
-  db: "\u{1F4BE}",
-  middleware: "\u{1F504}",
-  console: "\u{1F4DD}",
-  fetch: "\u{1F310}",
-  error: "\u274C",
-  custom: "\u{1F4CB}",
-  flow: "\u{1F504}"
-};
-var RESET = "\x1B[0m";
-var BOLD = "\x1B[1m";
-var DIM = "\x1B[2m";
-var _debugDeprecationWarningShown = false;
 function warnDebugDeprecated() {
   if (!_debugDeprecationWarningShown) {
     console.warn("[LOGGI] \u26A0\uFE0F Metoda .debug() jest deprecated. U\u017Cyj .log() zamiast tego.");
     _debugDeprecationWarningShown = true;
   }
 }
-var _schemaCache = null;
-var _categoryMap = /* @__PURE__ */ new Map();
 function printToConsole(entry) {
   const levelColor = LEVEL_COLORS[entry.level];
   const levelEmoji = LEVEL_EMOJI[entry.level];
@@ -365,27 +432,6 @@ function createCategoryLogger(category) {
     }
   };
 }
-var logMethodCustom = (message, data) => log("log", "custom", message, data);
-var logger = {
-  // Podstawowe metody (używają kategorii 'custom')
-  dev: (message, data) => log("dev", "custom", message, data),
-  log: logMethodCustom,
-  info: (message, data) => log("info", "custom", message, data),
-  warn: (message, data) => log("warn", "custom", message, data),
-  error: (message, data) => log("error", "custom", message, data),
-  fatal: (message, data) => log("fatal", "custom", message, data),
-  /** @deprecated Użyj .log() */
-  debug: (message, data) => {
-    warnDebugDeprecated();
-    logMethodCustom(message, data);
-  },
-  // Loggery dla konkretnych kategorii
-  auth: createCategoryLogger("auth"),
-  api: createCategoryLogger("api"),
-  security: createCategoryLogger("security"),
-  db: createCategoryLogger("db"),
-  middleware: createCategoryLogger("middleware")
-};
 async function fetchSchema() {
   if (_schemaCache) return _schemaCache;
   if (!isLoggiInitialized()) {
@@ -492,19 +538,81 @@ function createLoggerSync() {
   }
   return dynamicLogger;
 }
+var _originalConsoleLog, LEVEL_COLORS, LEVEL_EMOJI, CATEGORY_EMOJI, RESET, BOLD, DIM, _debugDeprecationWarningShown, _schemaCache, _categoryMap, logMethodCustom, logger;
+var init_logger = __esm({
+  "src/logger.ts"() {
+    "use strict";
+    init_types();
+    init_config();
+    init_transport();
+    init_sanitize();
+    init_request_context();
+    _originalConsoleLog = console.log.bind(console);
+    LEVEL_COLORS = {
+      dev: "\x1B[35m",
+      // magenta - wyraźny dla dev
+      log: "\x1B[90m",
+      // gray (dawny debug)
+      info: "\x1B[36m",
+      // cyan
+      warn: "\x1B[33m",
+      // yellow
+      error: "\x1B[31m",
+      // red
+      fatal: "\x1B[35m"
+      // magenta
+    };
+    LEVEL_EMOJI = {
+      dev: "\u{1F6E0}\uFE0F",
+      log: "\u{1F50D}",
+      info: "\u{1F4CB}",
+      warn: "\u26A0\uFE0F",
+      error: "\u274C",
+      fatal: "\u{1F480}"
+    };
+    CATEGORY_EMOJI = {
+      auth: "\u{1F510}",
+      api: "\u{1F4E1}",
+      security: "\u{1F6E1}\uFE0F",
+      db: "\u{1F4BE}",
+      middleware: "\u{1F504}",
+      console: "\u{1F4DD}",
+      fetch: "\u{1F310}",
+      error: "\u274C",
+      custom: "\u{1F4CB}",
+      flow: "\u{1F504}"
+    };
+    RESET = "\x1B[0m";
+    BOLD = "\x1B[1m";
+    DIM = "\x1B[2m";
+    _debugDeprecationWarningShown = false;
+    _schemaCache = null;
+    _categoryMap = /* @__PURE__ */ new Map();
+    logMethodCustom = (message, data) => log("log", "custom", message, data);
+    logger = {
+      // Podstawowe metody (używają kategorii 'custom')
+      dev: (message, data) => log("dev", "custom", message, data),
+      log: logMethodCustom,
+      info: (message, data) => log("info", "custom", message, data),
+      warn: (message, data) => log("warn", "custom", message, data),
+      error: (message, data) => log("error", "custom", message, data),
+      fatal: (message, data) => log("fatal", "custom", message, data),
+      /** @deprecated Użyj .log() */
+      debug: (message, data) => {
+        warnDebugDeprecated();
+        logMethodCustom(message, data);
+      },
+      // Loggery dla konkretnych kategorii
+      auth: createCategoryLogger("auth"),
+      api: createCategoryLogger("api"),
+      security: createCategoryLogger("security"),
+      db: createCategoryLogger("db"),
+      middleware: createCategoryLogger("middleware")
+    };
+  }
+});
 
 // src/integrations/console.ts
-var originalConsole = null;
-var isCaptured = false;
-var METHOD_TO_LEVEL = {
-  log: "log",
-  // console.log -> poziom 'log'
-  info: "info",
-  warn: "warn",
-  error: "error",
-  debug: "log"
-  // console.debug -> poziom 'log' (nie 'dev')
-};
 function formatArgs(args) {
   return args.map((arg) => {
     if (typeof arg === "string") return arg;
@@ -573,27 +681,44 @@ function restoreConsole() {
   originalConsole = null;
   isCaptured = false;
 }
-var rawConsole = {
-  log: (...args) => {
-    (originalConsole?.log ?? console.log).apply(console, args);
-  },
-  info: (...args) => {
-    (originalConsole?.info ?? console.info).apply(console, args);
-  },
-  warn: (...args) => {
-    (originalConsole?.warn ?? console.warn).apply(console, args);
-  },
-  error: (...args) => {
-    (originalConsole?.error ?? console.error).apply(console, args);
-  },
-  debug: (...args) => {
-    (originalConsole?.debug ?? console.debug).apply(console, args);
+var originalConsole, isCaptured, METHOD_TO_LEVEL, rawConsole;
+var init_console = __esm({
+  "src/integrations/console.ts"() {
+    "use strict";
+    init_config();
+    init_logger();
+    originalConsole = null;
+    isCaptured = false;
+    METHOD_TO_LEVEL = {
+      log: "log",
+      // console.log -> poziom 'log'
+      info: "info",
+      warn: "warn",
+      error: "error",
+      debug: "log"
+      // console.debug -> poziom 'log' (nie 'dev')
+    };
+    rawConsole = {
+      log: (...args) => {
+        (originalConsole?.log ?? console.log).apply(console, args);
+      },
+      info: (...args) => {
+        (originalConsole?.info ?? console.info).apply(console, args);
+      },
+      warn: (...args) => {
+        (originalConsole?.warn ?? console.warn).apply(console, args);
+      },
+      error: (...args) => {
+        (originalConsole?.error ?? console.error).apply(console, args);
+      },
+      debug: (...args) => {
+        (originalConsole?.debug ?? console.debug).apply(console, args);
+      }
+    };
   }
-};
+});
 
 // src/integrations/fetch.ts
-var originalFetch = null;
-var isCaptured2 = false;
 function extractUrl(input) {
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.toString();
@@ -645,9 +770,19 @@ function restoreFetch() {
   originalFetch = null;
   isCaptured2 = false;
 }
+var originalFetch, isCaptured2;
+var init_fetch = __esm({
+  "src/integrations/fetch.ts"() {
+    "use strict";
+    init_config();
+    init_logger();
+    init_request_context();
+    originalFetch = null;
+    isCaptured2 = false;
+  }
+});
 
 // src/integrations/unhandled.ts
-var isRegistered = false;
 function captureUnhandled() {
   if (isRegistered) return;
   if (typeof process === "undefined") return;
@@ -673,10 +808,18 @@ function captureUnhandled() {
     }
   });
 }
+var isRegistered;
+var init_unhandled = __esm({
+  "src/integrations/unhandled.ts"() {
+    "use strict";
+    init_config();
+    init_logger();
+    init_request_context();
+    isRegistered = false;
+  }
+});
 
 // src/config.ts
-var globalConfig = null;
-var isInitialized = false;
 function getConfig() {
   if (!globalConfig) {
     throw new Error("[LOGGI] SDK not initialized. Call initLoggi() first.");
@@ -740,19 +883,75 @@ function initLoggi(config) {
       projectSlug: globalConfig.projectSlug,
       environment: globalConfig.environment
     });
-  } else if (globalConfig.debug) {
-    console.log("[LOGGI] SDK initialized", {
-      projectSlug: globalConfig.projectSlug,
-      environment: globalConfig.environment,
-      endpoint: globalConfig.endpoint,
-      captureConsole: globalConfig.captureConsole,
-      captureFetch: globalConfig.captureFetch,
-      captureUnhandled: globalConfig.captureUnhandled
+  } else {
+    if (globalConfig.debug) {
+      console.log("[LOGGI] SDK initialized", {
+        projectSlug: globalConfig.projectSlug,
+        environment: globalConfig.environment,
+        endpoint: globalConfig.endpoint,
+        captureConsole: globalConfig.captureConsole,
+        captureFetch: globalConfig.captureFetch,
+        captureUnhandled: globalConfig.captureUnhandled
+      });
+    }
+    Promise.resolve().then(() => (init_transport(), transport_exports)).then(({ initTransport: initTransport2 }) => {
+      initTransport2().catch(() => {
+      });
     });
   }
 }
+var globalConfig, isInitialized;
+var init_config = __esm({
+  "src/config.ts"() {
+    "use strict";
+    init_types();
+    init_console();
+    init_fetch();
+    init_unhandled();
+    globalConfig = null;
+    isInitialized = false;
+  }
+});
+
+// src/index.ts
+var src_exports = {};
+__export(src_exports, {
+  _internalLog: () => log,
+  captureConsole: () => captureConsole,
+  captureFetch: () => captureFetch,
+  captureUnhandled: () => captureUnhandled,
+  createLogger: () => createLogger,
+  createLoggerSync: () => createLoggerSync,
+  createLoggi: () => createLoggi,
+  createLoggiSync: () => createLoggiSync,
+  fetchSchema: () => fetchSchema,
+  flush: () => flush,
+  getConfig: () => getConfig,
+  getRequestId: () => getRequestId,
+  initLoggi: () => initLoggi,
+  initTransport: () => initTransport,
+  isLoggiInitialized: () => isLoggiInitialized,
+  isTransportOffline: () => isTransportOffline,
+  logger: () => logger,
+  rawConsole: () => rawConsole,
+  resetOfflineMode: () => resetOfflineMode,
+  restoreConsole: () => restoreConsole,
+  restoreFetch: () => restoreFetch,
+  runWithRequestId: () => runWithRequestId,
+  sanitize: () => sanitize,
+  sanitizeMessage: () => sanitizeMessage
+});
+module.exports = __toCommonJS(src_exports);
+init_config();
+init_logger();
+init_transport();
 
 // src/loggi.ts
+init_types();
+init_config();
+init_transport();
+init_sanitize();
+init_request_context();
 var RESET2 = "\x1B[0m";
 var BOLD2 = "\x1B[1m";
 var DIM2 = "\x1B[2m";
@@ -1089,6 +1288,13 @@ function createLoggiSync(projectCategories = []) {
     }
   };
 }
+
+// src/index.ts
+init_console();
+init_fetch();
+init_unhandled();
+init_request_context();
+init_sanitize();
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   _internalLog,
@@ -1104,6 +1310,7 @@ function createLoggiSync(projectCategories = []) {
   getConfig,
   getRequestId,
   initLoggi,
+  initTransport,
   isLoggiInitialized,
   isTransportOffline,
   logger,
