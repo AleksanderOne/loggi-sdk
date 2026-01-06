@@ -354,8 +354,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
 }
 
-// Rejestruj handlery shutdown
-if (typeof process !== 'undefined') {
+// Rejestruj handlery shutdown (tylko w Node.js, nie w Edge Runtime)
+// Edge Runtime ma `process` ale nie ma `process.on`
+if (typeof process !== 'undefined' && typeof process.on === 'function') {
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('beforeExit', () => gracefulShutdown('beforeExit'));

@@ -271,7 +271,7 @@ function createCategoryMethods(category: string): CategoryMethods {
         __dev: true,
         __file: extractFileFromStack(),
         __timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now(),
-        __memory: typeof process !== 'undefined' && process.memoryUsage ? process.memoryUsage().heapUsed : undefined,
+        __memory: typeof process !== 'undefined' && typeof process.memoryUsage === 'function' ? process.memoryUsage().heapUsed : undefined,
       };
       log('dev', category, message, { ...data, ...devContext });
     },

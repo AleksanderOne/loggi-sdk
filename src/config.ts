@@ -38,20 +38,13 @@ export function isLoggiInitialized(): boolean {
 }
 
 /**
- * Auto-wykrywanie projectSlug z package.json
+ * Auto-wykrywanie projectSlug
+ * UWAGA: Usunięto auto-detekcję z package.json (niekompatybilna z Edge Runtime)
+ * Użyj env LOGGI_PROJECT_SLUG lub przekaż w config
  */
 function autoDetectProjectSlug(): string {
-    try {
-        // Próbuj wczytać package.json z bieżącego katalogu
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const pkg = require(process.cwd() + '/package.json');
-        if (pkg.name) {
-            // Usuń scope (@org/name -> name)
-            return pkg.name.replace(/^@[^/]+\//, '');
-        }
-    } catch {
-        // Ignoruj błędy - użyj fallback
-    }
+    // Bez auto-detekcji - Edge Runtime nie obsługuje process.cwd() i require()
+    // projectSlug musi być ustawiony przez env lub config
     return 'unknown';
 }
 

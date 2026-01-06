@@ -12,7 +12,8 @@ let isRegistered = false;
  */
 export function captureUnhandled(): void {
     if (isRegistered) return;
-    if (typeof process === 'undefined') return; // Browser environment
+    // Browser lub Edge Runtime - pomijamy (brak process.on)
+    if (typeof process === 'undefined' || typeof process.on !== 'function') return;
 
     isRegistered = true;
 

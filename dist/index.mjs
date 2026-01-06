@@ -1,11 +1,5 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
@@ -285,7 +279,7 @@ var init_transport = __esm({
     startupRetryCount = 0;
     retryTimer = null;
     connectionEstablished = false;
-    if (typeof process !== "undefined") {
+    if (typeof process !== "undefined" && typeof process.on === "function") {
       process.on("SIGINT", () => gracefulShutdown("SIGINT"));
       process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
       process.on("beforeExit", () => gracefulShutdown("beforeExit"));
@@ -779,7 +773,7 @@ var init_fetch = __esm({
 // src/integrations/unhandled.ts
 function captureUnhandled() {
   if (isRegistered) return;
-  if (typeof process === "undefined") return;
+  if (typeof process === "undefined" || typeof process.on !== "function") return;
   isRegistered = true;
   process.on("uncaughtException", (error) => {
     if (isLoggiInitialized()) {
@@ -824,13 +818,6 @@ function isLoggiInitialized() {
   return isInitialized;
 }
 function autoDetectProjectSlug() {
-  try {
-    const pkg = __require(process.cwd() + "/package.json");
-    if (pkg.name) {
-      return pkg.name.replace(/^@[^/]+\//, "");
-    }
-  } catch {
-  }
   return "unknown";
 }
 function initLoggi(config) {
@@ -1035,7 +1022,7 @@ function createCategoryMethods(category) {
         __dev: true,
         __file: extractFileFromStack(),
         __timestamp: typeof performance !== "undefined" ? performance.now() : Date.now(),
-        __memory: typeof process !== "undefined" && process.memoryUsage ? process.memoryUsage().heapUsed : void 0
+        __memory: typeof process !== "undefined" && typeof process.memoryUsage === "function" ? process.memoryUsage().heapUsed : void 0
       };
       log2("dev", category, message, { ...data, ...devContext });
     },

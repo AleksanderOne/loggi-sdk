@@ -177,7 +177,7 @@ var init_transport = __esm({
     isRetrying = false;
     retryTimer = null;
     connectionEstablished = false;
-    if (typeof process !== "undefined") {
+    if (typeof process !== "undefined" && typeof process.on === "function") {
       process.on("SIGINT", () => gracefulShutdown("SIGINT"));
       process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
       process.on("beforeExit", () => gracefulShutdown("beforeExit"));

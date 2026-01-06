@@ -291,7 +291,7 @@ var init_transport = __esm({
     startupRetryCount = 0;
     retryTimer = null;
     connectionEstablished = false;
-    if (typeof process !== "undefined") {
+    if (typeof process !== "undefined" && typeof process.on === "function") {
       process.on("SIGINT", () => gracefulShutdown("SIGINT"));
       process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
       process.on("beforeExit", () => gracefulShutdown("beforeExit"));
@@ -785,7 +785,7 @@ var init_fetch = __esm({
 // src/integrations/unhandled.ts
 function captureUnhandled() {
   if (isRegistered) return;
-  if (typeof process === "undefined") return;
+  if (typeof process === "undefined" || typeof process.on !== "function") return;
   isRegistered = true;
   process.on("uncaughtException", (error) => {
     if (isLoggiInitialized()) {
@@ -830,13 +830,6 @@ function isLoggiInitialized() {
   return isInitialized;
 }
 function autoDetectProjectSlug() {
-  try {
-    const pkg = require(process.cwd() + "/package.json");
-    if (pkg.name) {
-      return pkg.name.replace(/^@[^/]+\//, "");
-    }
-  } catch {
-  }
   return "unknown";
 }
 function initLoggi(config) {
@@ -1069,7 +1062,7 @@ function createCategoryMethods(category) {
         __dev: true,
         __file: extractFileFromStack(),
         __timestamp: typeof performance !== "undefined" ? performance.now() : Date.now(),
-        __memory: typeof process !== "undefined" && process.memoryUsage ? process.memoryUsage().heapUsed : void 0
+        __memory: typeof process !== "undefined" && typeof process.memoryUsage === "function" ? process.memoryUsage().heapUsed : void 0
       };
       log2("dev", category, message, { ...data, ...devContext });
     },
